@@ -1,20 +1,10 @@
 #include "llvm/IR/Instruction.h"
-#include "llvm/Transforms/Utils.h"
-#include "llvm/Transforms/Utils/LoopPeel.h"
-#include "llvm/Transforms/Utils/LoopSimplify.h"
 #include "llvm/Transforms/Utils/LoopUtils.h"
-#include "llvm/Transforms/Utils/SizeOpts.h"
 #include "llvm/Transforms/Utils/UnrollLoop.h"
 #include "llvm/Analysis/LoopAnalysisManager.h"
-#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/LoopUnrollAnalyzer.h"
-#include "llvm/Transforms/Utils/BasicBlockUtils.h"
-#include "llvm/Transforms/Utils/LoopUtils.h"
-#include "llvm/ADT/Statistic.h"
 #include "llvm/Pass.h"
 #include "llvm/Analysis/LoopPass.h"
-#include "llvm/IR/IRBuilder.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/IR/IRBuilder.h"
 #include <algorithm>
 
@@ -61,8 +51,32 @@ struct OurTCE : public FunctionPass {
     return nullptr;
   }
 
-  void transformToLoop(Function* F){
+  void transformToLoop(Function* F, Instruction* CallInstruction) {
+    IRBuilder<> Builder(F->getContext());
 
+    // Create a new loop header block after the entry block
+    BasicBlock *EntryBB = &F->getEntryBlock();
+    BasicBlock *LoopHeaderBB = BasicBlock::Create(F->getContext(), "loop_header", F, EntryBB->getNextNode());
+
+    // Move all instructions from the entry block to the new loop header block
+    LoopHeaderBB->splice(LoopHeaderBB->end(), EntryBB);
+
+    // Add an unconditional branch from the entry block to the new loop header block
+    Builder.SetInsertPoint(EntryBB);
+    Builder.CreateBr(LoopHeaderBB);
+
+    // Insert the loop back block just before the return
+    Builder.SetInsertPoint(CallInstruction);
+    CallInst *CI = cast<CallInst>(CallInstruction);
+    for (unsigned i = 1; i < CI->getNumOperands(); ++i) {
+      Argument* Arg = F->getArg(i-1);
+      Value* ArgVal = CI->getOperand(i);
+      Builder.CreateStore(ArgVal, Arg);
+    }
+    CallInstruction->getNextNode()->eraseFromParent();
+    Builder.CreateBr(LoopHeaderBB);
+
+    CallInstruction->eraseFromParent();
   }
 
 
@@ -71,7 +85,7 @@ struct OurTCE : public FunctionPass {
     bool codeChanged = false;
 
     if (Instruction* CallInstruction = getTailRecursiveInstruction(&F)){
-      transformToLoop(&F);
+      transformToLoop(&F, CallInstruction);
       codeChanged = true;
     }
 
@@ -81,4 +95,4 @@ struct OurTCE : public FunctionPass {
 }
 
 char OurTCE::ID = 0;
-static RegisterPass<OurTCE> X("our-lte-pass", "Our tail call elimination pass.");
+static RegisterPass<OurTCE> X("our-tce-pass", "Our tail call elimination pass.");
