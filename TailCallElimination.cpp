@@ -7,6 +7,7 @@
 #include "llvm/Analysis/LoopPass.h"
 #include "llvm/IR/IRBuilder.h"
 #include <algorithm>
+#include <unordered_map>
 
 using namespace llvm;
 
@@ -57,9 +58,38 @@ struct OurTCE : public FunctionPass {
     // Create a new loop header block after the entry block
     BasicBlock *EntryBB = &F->getEntryBlock();
     BasicBlock *LoopHeaderBB = BasicBlock::Create(F->getContext(), "loop_header", F, EntryBB->getNextNode());
+    std::unordered_map<Value*, Value*> ArgToAllocaMap;
 
-    // Move all instructions from the entry block to the new loop header block
-    LoopHeaderBB->splice(LoopHeaderBB->end(), EntryBB);
+    // get mapping between alloca and function args
+    for (auto it = EntryBB->begin(), end = EntryBB->end(); it != end; ++it) {
+      Instruction &I = *it;
+      if (isa<StoreInst>(&I)) {
+        // Check if the 0-th operand of the store is one of the function arguments
+        Value *PointerOperand = I.getOperand(0);
+        for (Argument &Arg : F->args()) {
+          if (PointerOperand == &Arg) {
+            ArgToAllocaMap[&Arg] = I.getOperand(1);
+          }
+        }
+      }
+    }
+
+    // dummy terminator
+    Builder.SetInsertPoint(LoopHeaderBB);
+    Builder.CreateBr(LoopHeaderBB);
+
+    // Move all non alloca and arguments store instructions
+    for (Instruction &I : *EntryBB) {
+      if (isa<AllocaInst>(&I)) {
+        continue;
+      }
+      else if (isa<StoreInst>(&I) && ArgToAllocaMap.find(I.getOperand(0)) != ArgToAllocaMap.end()){
+        continue;
+      }
+      I.moveBefore(LoopHeaderBB->getTerminator());
+    }
+
+    LoopHeaderBB->getTerminator()->eraseFromParent();
 
     // Add an unconditional branch from the entry block to the new loop header block
     Builder.SetInsertPoint(EntryBB);
@@ -71,10 +101,11 @@ struct OurTCE : public FunctionPass {
     for (unsigned i = 1; i < CI->getNumOperands(); ++i) {
       Argument* Arg = F->getArg(i-1);
       Value* ArgVal = CI->getOperand(i);
-      Builder.CreateStore(ArgVal, Arg);
+      Builder.CreateStore(ArgVal, ArgToAllocaMap[Arg]);
     }
-    CallInstruction->getNextNode()->eraseFromParent();
     Builder.CreateBr(LoopHeaderBB);
+
+    CallInstruction->getParent()->getTerminator()->eraseFromParent();
 
     CallInstruction->eraseFromParent();
   }
