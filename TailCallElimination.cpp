@@ -8,6 +8,8 @@
 #include "llvm/IR/IRBuilder.h"
 #include <algorithm>
 #include <unordered_map>
+#include <iostream>
+#include <vector>
 
 using namespace llvm;
 
@@ -78,6 +80,8 @@ struct OurTCE : public FunctionPass {
     Builder.SetInsertPoint(LoopHeaderBB);
     Builder.CreateBr(LoopHeaderBB);
 
+    std::vector<Instruction*> InstructionsToMove;
+
     // Move all non alloca and arguments store instructions
     for (Instruction &I : *EntryBB) {
       if (isa<AllocaInst>(&I)) {
@@ -86,8 +90,16 @@ struct OurTCE : public FunctionPass {
       else if (isa<StoreInst>(&I) && ArgToAllocaMap.find(I.getOperand(0)) != ArgToAllocaMap.end()){
         continue;
       }
-      I.moveBefore(LoopHeaderBB->getTerminator());
+      I.print(llvm::outs());
+      llvm::outs() << "\n";
+      std::cout << "Pre pomeranja" << std::endl;
+      InstructionsToMove.push_back(&I);
     }
+
+    for (Instruction* I : InstructionsToMove)
+      I->moveBefore(LoopHeaderBB->getTerminator());
+
+    std::cout << "Stigao ovde" << std::endl;
 
     LoopHeaderBB->getTerminator()->eraseFromParent();
 
@@ -98,8 +110,8 @@ struct OurTCE : public FunctionPass {
     // Insert the loop back block just before the return
     Builder.SetInsertPoint(CallInstruction);
     CallInst *CI = cast<CallInst>(CallInstruction);
-    for (unsigned i = 1; i < CI->getNumOperands(); ++i) {
-      Argument* Arg = F->getArg(i-1);
+    for (unsigned i = 0; i < CI->getNumOperands() - 1; ++i) {
+      Argument* Arg = F->getArg(i);
       Value* ArgVal = CI->getOperand(i);
       Builder.CreateStore(ArgVal, ArgToAllocaMap[Arg]);
     }
@@ -116,6 +128,7 @@ struct OurTCE : public FunctionPass {
     bool codeChanged = false;
 
     if (Instruction* CallInstruction = getTailRecursiveInstruction(&F)){
+      std::cout << "Usao" << std::endl;
       transformToLoop(&F, CallInstruction);
       codeChanged = true;
     }
