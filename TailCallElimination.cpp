@@ -54,13 +54,12 @@ struct OurTCE : public FunctionPass {
     return nullptr;
   }
 
-  void transformToLoop(Function* F, Instruction* CallInstruction) {
+  void createLoopBeginBlock(Function* F){
     IRBuilder<> Builder(F->getContext());
 
     // Create a new loop header block after the entry block
     BasicBlock *EntryBB = &F->getEntryBlock();
-    BasicBlock *LoopHeaderBB = BasicBlock::Create(F->getContext(), "loop_header", F, EntryBB->getNextNode());
-    std::unordered_map<Value*, Value*> ArgToAllocaMap;
+    LoopBeginBlock = BasicBlock::Create(F->getContext(), "loop_header", F, EntryBB->getNextNode());
 
     // get mapping between alloca and function args
     for (auto it = EntryBB->begin(), end = EntryBB->end(); it != end; ++it) {
@@ -77,8 +76,8 @@ struct OurTCE : public FunctionPass {
     }
 
     // dummy terminator
-    Builder.SetInsertPoint(LoopHeaderBB);
-    Builder.CreateBr(LoopHeaderBB);
+    Builder.SetInsertPoint(LoopBeginBlock);
+    Builder.CreateBr(LoopBeginBlock);
 
     std::vector<Instruction*> InstructionsToMove;
 
@@ -91,21 +90,26 @@ struct OurTCE : public FunctionPass {
         continue;
       }
       I.print(llvm::outs());
-      llvm::outs() << "\n";
-      std::cout << "Pre pomeranja" << std::endl;
       InstructionsToMove.push_back(&I);
     }
 
     for (Instruction* I : InstructionsToMove)
-      I->moveBefore(LoopHeaderBB->getTerminator());
+      I->moveBefore(LoopBeginBlock->getTerminator());
 
-    std::cout << "Stigao ovde" << std::endl;
-
-    LoopHeaderBB->getTerminator()->eraseFromParent();
+    LoopBeginBlock->getTerminator()->eraseFromParent();
 
     // Add an unconditional branch from the entry block to the new loop header block
     Builder.SetInsertPoint(EntryBB);
-    Builder.CreateBr(LoopHeaderBB);
+    Builder.CreateBr(LoopBeginBlock);
+
+  }
+
+  void transformToLoop(Function* F, Instruction* CallInstruction) {
+
+    if (LoopBeginBlock == nullptr)
+      createLoopBeginBlock(F);
+
+    IRBuilder<> Builder(F->getContext());
 
     // Insert the loop back block just before the return
     Builder.SetInsertPoint(CallInstruction);
@@ -115,7 +119,7 @@ struct OurTCE : public FunctionPass {
       Value* ArgVal = CI->getOperand(i);
       Builder.CreateStore(ArgVal, ArgToAllocaMap[Arg]);
     }
-    Builder.CreateBr(LoopHeaderBB);
+    Builder.CreateBr(LoopBeginBlock);
 
     CallInstruction->getParent()->getTerminator()->eraseFromParent();
 
@@ -126,8 +130,10 @@ struct OurTCE : public FunctionPass {
   bool runOnFunction(Function& F) override {
 
     bool codeChanged = false;
+    LoopBeginBlock = nullptr;
+    ArgToAllocaMap.clear();
 
-    if (Instruction* CallInstruction = getTailRecursiveInstruction(&F)){
+    while (Instruction* CallInstruction = getTailRecursiveInstruction(&F)){
       std::cout << "Usao" << std::endl;
       transformToLoop(&F, CallInstruction);
       codeChanged = true;
@@ -135,7 +141,13 @@ struct OurTCE : public FunctionPass {
 
     return codeChanged;
   }
+
+private:
+  BasicBlock* LoopBeginBlock;
+  std::unordered_map<Value*, Value*> ArgToAllocaMap;
+
 };
+
 }
 
 char OurTCE::ID = 0;
