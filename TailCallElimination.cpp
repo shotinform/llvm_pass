@@ -19,11 +19,31 @@ struct OurTCE : public FunctionPass {
   static char ID;
   OurTCE() : FunctionPass(ID) {}
 
+  bool checkWithLoadAndStore(CallInst* CI){
+    if (auto *Store = dyn_cast<StoreInst>(CI->getNextNode())) {
+      if (auto *BI = dyn_cast<BranchInst>(Store->getNextNode())) {
+        if (BI->isUnconditional()) {
+          BasicBlock *Successor = BI->getSuccessor(0);
+          Instruction *FirstInstInSuccessor = &Successor->front();
+          if (auto *Load = dyn_cast<LoadInst>(FirstInstInSuccessor)) {
+            if (Store->getPointerOperand() == Load->getPointerOperand()) {
+              Instruction *NextInst = Load->getNextNode();
+
+              if (isa<ReturnInst>(NextInst)) {
+                return true;
+              }
+            }
+          }
+        }
+      }
+    }
+    return false;
+  }
 
   Instruction* getTailRecursiveInstruction(Function* F){
 
-    if (!F->getReturnType()->isVoidTy())
-      return nullptr;
+    //if (!F->getReturnType()->isVoidTy())
+    //  return nullptr;
 
     for (auto &BB : *F){
       for (auto &I : BB) {
@@ -47,6 +67,10 @@ struct OurTCE : public FunctionPass {
               }
             }
           }
+          // case 3: Multiple return values non-void, then have store and load
+          else if (checkWithLoadAndStore(CI)){
+            return CI;
+          }
         }
       }
     }
@@ -59,7 +83,7 @@ struct OurTCE : public FunctionPass {
 
     // Create a new loop header block after the entry block
     BasicBlock *EntryBB = &F->getEntryBlock();
-    LoopBeginBlock = BasicBlock::Create(F->getContext(), "loop_header", F, EntryBB->getNextNode());
+    LoopBeginBlock = BasicBlock::Create(F->getContext(), "loop_start", F, EntryBB->getNextNode());
 
     // get mapping between alloca and function args
     for (auto it = EntryBB->begin(), end = EntryBB->end(); it != end; ++it) {
@@ -89,7 +113,6 @@ struct OurTCE : public FunctionPass {
       else if (isa<StoreInst>(&I) && ArgToAllocaMap.find(I.getOperand(0)) != ArgToAllocaMap.end()){
         continue;
       }
-      I.print(llvm::outs());
       InstructionsToMove.push_back(&I);
     }
 
@@ -115,14 +138,14 @@ struct OurTCE : public FunctionPass {
     Builder.SetInsertPoint(CallInstruction);
     CallInst *CI = cast<CallInst>(CallInstruction);
     for (unsigned i = 0; i < CI->getNumOperands() - 1; ++i) {
-      Argument* Arg = F->getArg(i);
-      Value* ArgVal = CI->getOperand(i);
+      Argument *Arg = F->getArg(i);
+      Value *ArgVal = CI->getOperand(i);
       Builder.CreateStore(ArgVal, ArgToAllocaMap[Arg]);
     }
     Builder.CreateBr(LoopBeginBlock);
 
     CallInstruction->getParent()->getTerminator()->eraseFromParent();
-
+    CallInstruction->getNextNode()->eraseFromParent();
     CallInstruction->eraseFromParent();
   }
 
