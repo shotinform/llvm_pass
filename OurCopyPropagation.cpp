@@ -6,6 +6,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/Pass.h"
+#include <iostream>
 #include <map>
 #include <vector>
 #include <unordered_map>
@@ -34,6 +35,10 @@ struct CopyPropagationPass : public FunctionPass {
   }
 
   bool shouldSave(StoreInst* SI){
+    if (isa<Constant>(SI->getValueOperand())){
+      return false;
+    }
+
     if (VariablesMap.find(SI->getValueOperand()) != VariablesMap.end())
       return true;
     return false;
