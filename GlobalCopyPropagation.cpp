@@ -90,7 +90,7 @@ struct GlobalCopyPropagationPass : public FunctionPass {
 
       tmp = copyAndKill(*BB, CPIn[BB]);
       std::cout << "Nakon copyKill" << std::endl;
-      if ((CPOut.find(BB) != CPOut.end()) && (tmp != CPOut[BB])) {
+      if ((CPOut.find(BB) == CPOut.end()) || (tmp != CPOut[BB])) {
         CPOut[BB] = tmp;
         changed = true;
       }
@@ -98,6 +98,7 @@ struct GlobalCopyPropagationPass : public FunctionPass {
 
 
       if (changed){
+        std::cout << "usao" << std::endl;
         for (llvm::BasicBlock* succ : llvm::successors(BB)) {
           WorkList.push(succ);
         }
