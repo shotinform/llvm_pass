@@ -44,11 +44,8 @@ struct GlobalCopyPropagationPass : public FunctionPass {
   std::unordered_map<Value*, Value*> copyAndKill(BasicBlock& BB, std::unordered_map<Value*, Value*> StoreMap){
     for (auto &I : BB) {
       if (auto *SI = dyn_cast<StoreInst>(&I)) {
-        std::cout << "Pre checkChanhe" << std::endl;
         checkChange(SI, StoreMap);
-        std::cout << "Nakon checkChanhe" << std::endl;
         if (shouldSave(SI)) {
-          std::cout << "Pre shouldSave" << std::endl;
           save(SI, StoreMap);
         }
       }
@@ -67,15 +64,12 @@ struct GlobalCopyPropagationPass : public FunctionPass {
     WorkList.push(&F.front());
     CPIn[&F.front()] = std::unordered_map<Value*, Value*>();
 
-    std::cout << "Pre petlje" << std::endl;
-
     while (!WorkList.empty()) {
       BasicBlock *BB = WorkList.front();
       WorkList.pop();
       changed = false;
 
       bool firstPred = true;
-      std::cout << "Pre prethodnika" << std::endl;
       for (auto* predBB : predecessors(BB)){
         if (firstPred){
           CPIn[BB] = CPOut[predBB];
@@ -86,10 +80,7 @@ struct GlobalCopyPropagationPass : public FunctionPass {
         }
       }
 
-      std::cout << "Pre copyAndKilla" << std::endl;
-
       tmp = copyAndKill(*BB, CPIn[BB]);
-      std::cout << "Nakon copyKill" << std::endl;
       if ((CPOut.find(BB) == CPOut.end()) || (tmp != CPOut[BB])) {
         CPOut[BB] = tmp;
         changed = true;
@@ -98,7 +89,6 @@ struct GlobalCopyPropagationPass : public FunctionPass {
 
 
       if (changed){
-        std::cout << "usao" << std::endl;
         for (llvm::BasicBlock* succ : llvm::successors(BB)) {
           WorkList.push(succ);
         }
@@ -166,9 +156,7 @@ struct GlobalCopyPropagationPass : public FunctionPass {
 
     std::unordered_map<Value*, Value*> StoreMap;
     mapVariables(F);
-    std::cout << "Pre CPIn CPOut" << std::endl;
     calculateCPInAndCPOut(F);
-    std::cout << "Pre CPIn CPOut" << std::endl;
     bool changed = false;
 
     for (auto &BB : F) {
