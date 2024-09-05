@@ -1,8 +1,17 @@
-Optimizacija u LLVM radjena u okviru predmeta Konstrukcija kompilatora.
+# Optimizacija u LLVM  
+Predmet: Konstrukcija kompilatora  
+Matematički fakultet, Univerzitet u Beogradu
 
-Profesor: dr Milena Vujošević Janičić
-Asistent: Strahinja Stanojević
+Profesor:  
+dr Milena Vujošević Janičić
 
-Autori: 
-Marko Nikitović 123/2020
-Tamara Stojanovic 85/2019
+Asistent:  
+Strahinja Stanojević
+
+## Odradjenje optimizacije:
+- Tail Call Elimination  
+- Copy Propagation  
+
+## Autori:
+- Marko Nikitović 123/2020  
+- Tamara Stojanović 85/2019
